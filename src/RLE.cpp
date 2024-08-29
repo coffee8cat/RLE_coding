@@ -37,12 +37,11 @@ void RLE_encode(FILE *fp_source, FILE *fp_target)
     bool is_repeat = (prev_ch == curr_ch);
     bool is_repeat_before = false;
 
-    fpos_t position = 1;
-    fsetpos(fp_source, &position);
+    ungetc(curr_ch, fp_source);
 
     char out_buf[128] = {};
 
-    char seq_length = 1;
+    char seq_length = (char)is_repeat;
 
     while (fread((void*)&curr_ch, sizeof(char), 1, fp_source))
     {
@@ -80,16 +79,15 @@ void RLE_encode(FILE *fp_source, FILE *fp_target)
             is_repeat_before = true;
         }
 
-        if(curr_ch == '\0')
+        if (seq_length == 127)
         {
-            if (is_repeat)
-            {
-                seq_flush(seq_length, prev_ch, fp_target);
-            }
-            else
-            {
-                buf_flush(seq_length, out_buf, fp_target);
-            }
+            seq_flush(seq_length, prev_ch, fp_target);
+            seq_length = 0;
+        }
+        else if (seq_length == -127)
+        {
+            buf_flush(seq_length, out_buf, fp_target);
+            seq_length = 0;
         }
         prev_ch = curr_ch;
     }
@@ -113,7 +111,7 @@ void RLE_decode(FILE *fp_source, FILE *fp_target)
     char ch = 0;
     char counter = 0;
 
-    while(fread((void*)&counter, sizeof(char), 1, fp_source) && counter != EOF)
+    while(fread((void*)&counter, sizeof(char), 1, fp_source))
     {
         if(counter < 0)
         {

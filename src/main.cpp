@@ -23,5 +23,22 @@ int main()
     fclose(fp_source);
     fclose(fp_target);
 
+    fp_source = fopen("data\\cat.jpg", "rb");
+    fp_target = fopen("coded_data\\cat_compr.jpg", "wb");
+
+    RLE_encode(fp_source, fp_target);
+
+    fclose(fp_source);
+    fclose(fp_target);
+
+    fp_source = fopen("coded_data\\cat_compr.jpg", "rb");
+    fp_target = fopen("data\\cat1.jpg", "wb");
+
+    RLE_decode(fp_source, fp_target);
+
+
+    fclose(fp_source);
+    fclose(fp_target);
+
     return EXIT_SUCCESS;
 }
