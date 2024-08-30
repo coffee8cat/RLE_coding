@@ -5,11 +5,64 @@
 
 #include "RLE.h"
 
+void RLE_encode(FILE *fp_source, FILE *fp_target)
+{
+    assert(fp_source);
+    assert(fp_target);
+
+    char out_buf[128] = {};
+
+    fseek(fp_source, 0, SEEK_END);
+    size_t source_size = ftell(fp_source);
+    fseek(fp_source, 0, SEEK_SET);
+
+    size_t out_ind = 0;
+
+    char *output = (char*)calloc(source_size * 2, sizeof(char)); // cringeeeeeee
+    char *input  = (char*)calloc(source_size, sizeof(char)); // aaaaaaaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa
+    fread((void*)input, sizeof(char), source_size, fp_source);
+
+    bool is_repeat = (input[0] == input[1]);
+    bool is_repeat_before = false;
+
+    char seq_length = (char)is_repeat;
+
+    for(size_t curr = 1; curr < source_size; curr++)
+    {
+        if (input[curr] == input[curr - 1] && is_repeat)
+            seq_length++;
+
+        else if (input[curr] != input[curr - 1] && !is_repeat)
+            add_ch_in_buf(out_buf, &seq_length, input[curr - 1], &is_repeat_before);
+
+        else if (input[curr] == input[curr - 1] && !is_repeat)
+            seq_start(&seq_length, out_buf, output, &out_ind, &is_repeat_before, &is_repeat);
+
+        else if (input[curr] != input[curr - 1] && is_repeat)
+            seq_end(&seq_length, input[curr - 1], output, &out_ind, &is_repeat, &is_repeat_before);
+
+        check_buf(&seq_length, output, &out_ind, input[curr - 1], out_buf);
+        input[curr - 1] = input[curr];
+    }
+
+    buf_flush(seq_length, out_buf, output, &out_ind);
+    fwrite((void*)output, sizeof(char), out_ind, fp_target);
+}
+
+void add_ch_in_buf(char out_buf[], char *seq_length, char ch, bool *is_repeat_before)
+{
+    if(*is_repeat_before)
+    {
+        *is_repeat_before = false;
+    }
+    out_buf[abs((*seq_length)--)] = ch;
+}
+
 void buf_flush(char seq_length, char out_buf[], char output[], size_t *out_ind)
 {
     output[*out_ind] = seq_length;
     (*out_ind)++;
-    for(size_t i = 0; i < (size_t)abs(seq_length); i++)
+    for(size_t i = 0; i < (size_t)abs(seq_length); i++) // memcpy!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     {
         output[*out_ind] = out_buf[i];
         (*out_ind)++;
@@ -24,79 +77,38 @@ void seq_flush(char seq_length, char ch, char output[], size_t *out_ind)
     (*out_ind)++;
 }
 
-void RLE_encode(FILE *fp_source, FILE *fp_target)
+void seq_start(char *seq_length, char out_buf[], char output[], size_t *out_ind, bool *is_repeat_before, bool *is_repeat)
 {
-    assert(fp_source);
-    assert(fp_target);
-
-    char out_buf[128] = {};
-
-    fseek(fp_source, 0, SEEK_END);
-    size_t source_size = ftell(fp_source);
-    fseek(fp_source, 0, SEEK_SET);
-
-    size_t out_ind = 0;
-
-    char *output = (char*)calloc(source_size * 2, sizeof(char));
-    char *input  = (char*)calloc(source_size, sizeof(char));
-    fread((void*)&input[0], sizeof(char), source_size, fp_source);
-
-    bool is_repeat = (input[0] == input[1]);
-    bool is_repeat_before = false;
-
-    char seq_length = (char)is_repeat;
-
-    for(size_t curr = 1; curr < source_size; curr++)
+    if(!*is_repeat_before)
     {
-        if (input[curr] == input[curr - 1] && is_repeat)
-        {
-            seq_length++;
-        }
-
-        else if (input[curr] != input[curr - 1] && !is_repeat)
-        {
-            if(is_repeat_before)
-            {
-                is_repeat_before = false;
-            }
-            out_buf[abs(seq_length--)] = input[curr-1];
-        }
-
-        else if (input[curr] == input[curr - 1] && !is_repeat)
-        {
-            if(!is_repeat_before)
-            {
-                buf_flush(seq_length, out_buf, output, &out_ind);
-            }
-
-            seq_length = 2;
-            is_repeat = true;
-        }
-
-        else if (input[curr] != input[curr - 1] && is_repeat)
-        {
-            seq_flush(seq_length, input[curr - 1], output, &out_ind);
-
-            seq_length = 0;
-            is_repeat = false;
-            is_repeat_before = true;
-        }
-
-        if (seq_length == 127)
-        {
-            seq_flush(seq_length, input[curr - 1], output, &out_ind);
-            seq_length = 0;
-        }
-        else if (seq_length == -127)
-        {
-            buf_flush(seq_length, out_buf, output, &out_ind);
-            seq_length = 0;
-        }
-        input[curr - 1] = input[curr];
+        buf_flush(*seq_length, out_buf, output, out_ind);
     }
 
-    buf_flush(seq_length, out_buf, output, &out_ind);
-    fwrite((void*)output, sizeof(char), out_ind, fp_target);
+    *seq_length = 2;
+    *is_repeat = true;
+
+}
+void seq_end(char *seq_length, char ch, char output[], size_t *out_ind, bool *is_repeat, bool *is_repeat_before)
+{
+    seq_flush(*seq_length, ch, output, out_ind);
+
+    *seq_length = 0;
+    *is_repeat = false;
+    *is_repeat_before = true;
+}
+
+void check_buf(char *seq_length, char output[], size_t *out_ind, char ch, char out_buf[])
+{
+    if (*seq_length == 127)
+    {
+        seq_flush(*seq_length, ch, output, out_ind);
+        *seq_length = 0;
+    }
+    else if (*seq_length == -127)
+    {
+        buf_flush(*seq_length, out_buf, output, out_ind);
+        *seq_length = 0;
+    }
 }
 
 void RLE_decode(FILE *fp_source, FILE *fp_target)
@@ -119,56 +131,63 @@ void RLE_decode(FILE *fp_source, FILE *fp_target)
     char *input         = (char*)calloc(source_size, sizeof(char));
     fread((void*)input, sizeof(char), source_size, fp_source);
 
-    printf("\n%d\n", source_size);
     for(size_t i = 0; i < source_size; i++)
     {
         if(seq_length == 0)
-        {
-            seq_length = input[i];
-            printf("%d", seq_length);
-            counter = 0;
-        }
+            read_seq_length(&seq_length, &counter, input[i]);
+
         else
         {
             if(seq_length > -1)
-            {
-                ch = input[i];
-                for(size_t k = 0; k < seq_length; k++)
-                {
-                    if(buf_ind >= decode_buf_size)
-                        decode_buffer_flush(decode_buffer, &buf_ind, fp_target);
+                write_rep_seq(decode_buffer, &buf_ind, decode_buf_size, fp_target, &seq_length, input[i]);
 
-                    decode_buffer[buf_ind] = ch;
-                    printf("%c", input[i]);
-                    buf_ind++;
-                }
-                seq_length = 0;
-            }
             else
             {
                 if(counter < seq_length * (-1))
-                {
-                    if(buf_ind >= decode_buf_size)
-                            decode_buffer_flush(decode_buffer, &buf_ind, fp_target);
+                    add_ch_in_decode_buf(decode_buffer, &buf_ind, decode_buf_size, fp_target, input[i], &counter);
 
-                    decode_buffer[buf_ind] = input[i];
-                    printf("%c", input[i]);
-                    buf_ind++;
-                    counter++;
-                }
                 else
-                {
-                    seq_length = 0;
-                    counter = 0;
-                    seq_length = input[i];
-                    printf("%d", seq_length);
-                }
+                    end_seq(&seq_length, &counter, input[i]);
             }
         }
     }
 
-    printf("\n%d\n", buf_ind);
     decode_buffer_flush(decode_buffer, &buf_ind, fp_target);
+}
+
+void read_seq_length(char *seq_length, char *counter, char ch)
+{
+    *seq_length = ch;
+    *counter = 0;
+}
+
+void write_rep_seq(char decode_buffer[], size_t *buf_ind, size_t decode_buf_size, FILE *fp_target, char *seq_length, char ch)
+{
+    for(size_t k = 0; k < *seq_length; k++)
+    {
+        if(*buf_ind >= decode_buf_size)
+            decode_buffer_flush(decode_buffer, buf_ind, fp_target);
+
+        decode_buffer[*buf_ind] = ch;
+        (*buf_ind)++;
+    }
+    *seq_length = 0;
+}
+
+void end_seq(char *seq_length, char *counter, char ch)
+{
+    *counter = 0;
+    *seq_length = ch;
+}
+
+void add_ch_in_decode_buf(char decode_buffer[], size_t *buf_ind, size_t decode_buf_size, FILE *fp_target, char ch, char *counter)
+{
+    if(*buf_ind >= decode_buf_size)
+            decode_buffer_flush(decode_buffer, buf_ind, fp_target);
+
+    decode_buffer[*buf_ind] = ch;
+    (*buf_ind)++;
+    (*counter)++;
 }
 
 void decode_buffer_flush(char *decode_buffer, size_t *buf_ind, FILE *fp_target)
