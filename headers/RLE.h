@@ -2,7 +2,7 @@
 #define _RLE_TEXT_COMPRESSION_H__
 
 void RLE_encode(FILE *fp_source, FILE *fp_target);
-void buf_flush(char seq_length, char *out_buf, char output[], size_t *out_ind);
+void buf_flush(char seq_length, char out_buf[], char output[], size_t *out_ind);
 void seq_flush(char seq_length, char ch, char output[], size_t *out_ind);
 
 void RLE_decode(FILE *fp_source, FILE *fp_target);

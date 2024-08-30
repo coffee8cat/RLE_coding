@@ -5,16 +5,14 @@
 
 #include "RLE.h"
 
-void buf_flush(char seq_length, char *out_buf, char output[], size_t *out_ind)
+void buf_flush(char seq_length, char out_buf[], char output[], size_t *out_ind)
 {
-    // printf("%d", seq_length);
     output[*out_ind] = seq_length;
     (*out_ind)++;
     for(size_t i = 0; i < (size_t)abs(seq_length); i++)
     {
         output[*out_ind] = out_buf[i];
         (*out_ind)++;
-        // printf("%c", out_buf[i]);
     }
 }
 
@@ -24,8 +22,6 @@ void seq_flush(char seq_length, char ch, char output[], size_t *out_ind)
     (*out_ind)++;
     output[*out_ind] = ch;
     (*out_ind)++;
-    // printf("%d", seq_length);
-    // printf("%c", ch);
 }
 
 void RLE_encode(FILE *fp_source, FILE *fp_target)
@@ -98,8 +94,9 @@ void RLE_encode(FILE *fp_source, FILE *fp_target)
         }
         input[curr - 1] = input[curr];
     }
-    fwrite((void*)&output[0], sizeof(char), out_ind, fp_target);
-    printf("%s", output);
+
+    buf_flush(seq_length, out_buf, output, &out_ind);
+    fwrite((void*)output, sizeof(char), out_ind, fp_target);
 }
 
 void RLE_decode(FILE *fp_source, FILE *fp_target)
@@ -107,30 +104,33 @@ void RLE_decode(FILE *fp_source, FILE *fp_target)
     assert(fp_source);
     assert(fp_target);
 
-    char ch = 0;
+    char ch         = 0;
     char seq_length = 0;
-    char counter = 0;
+    char counter    = 0;
 
     fseek(fp_source, 0, SEEK_END);
     size_t source_size = ftell(fp_source);
+    fseek(fp_source, 0, SEEK_SET);
 
     size_t decode_buf_size = 1024;
-    size_t buf_ind = 0;
+    size_t buf_ind         = 0;
 
     char *decode_buffer = (char*)calloc(decode_buf_size, sizeof(char));
-    char *input  = (char*)calloc(source_size, sizeof(char));
-    fread((void*)&input[0], sizeof(char), source_size, fp_source);
+    char *input         = (char*)calloc(source_size, sizeof(char));
+    fread((void*)input, sizeof(char), source_size, fp_source);
 
+    printf("\n%d\n", source_size);
     for(size_t i = 0; i < source_size; i++)
     {
         if(seq_length == 0)
         {
             seq_length = input[i];
+            printf("%d", seq_length);
             counter = 0;
         }
         else
         {
-            if(seq_length & (0x1 << 7))
+            if(seq_length > -1)
             {
                 ch = input[i];
                 for(size_t k = 0; k < seq_length; k++)
@@ -139,6 +139,7 @@ void RLE_decode(FILE *fp_source, FILE *fp_target)
                         decode_buffer_flush(decode_buffer, &buf_ind, fp_target);
 
                     decode_buffer[buf_ind] = ch;
+                    printf("%c", input[i]);
                     buf_ind++;
                 }
                 seq_length = 0;
@@ -150,16 +151,23 @@ void RLE_decode(FILE *fp_source, FILE *fp_target)
                     if(buf_ind >= decode_buf_size)
                             decode_buffer_flush(decode_buffer, &buf_ind, fp_target);
 
-                    decode_buffer[buf_ind] = ch;
+                    decode_buffer[buf_ind] = input[i];
+                    printf("%c", input[i]);
                     buf_ind++;
                     counter++;
                 }
                 else
+                {
                     seq_length = 0;
+                    counter = 0;
+                    seq_length = input[i];
+                    printf("%d", seq_length);
+                }
             }
         }
     }
 
+    printf("\n%d\n", buf_ind);
     decode_buffer_flush(decode_buffer, &buf_ind, fp_target);
 }
 
